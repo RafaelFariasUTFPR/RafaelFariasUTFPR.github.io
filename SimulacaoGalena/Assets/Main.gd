@@ -1,8 +1,6 @@
 extends Node2D
 
 
-
-
 onready var linha:Line2D = get_node("Line2D")
 onready var retangulo:ColorRect = get_node("ColorRect")
 onready var transConfigButton:Button = get_node("TransConfigButton")
@@ -16,19 +14,24 @@ onready var ponto3 = get_node("Ponto3")
 onready var ponto4 = get_node("Ponto4")
 onready var pontoSaida = ponto2
 onready var pontoSintonizador = ponto2
-
+#onready var pontoRetificado
 
 onready var retificadorInfo = get_node("Control/RetificadorInfo")
 onready var sintonizadorInfo = get_node("Control/SintonizadorInfo")
 onready var saidaInfo = get_node("Control/SaidaInfo")
 onready var filtroInfo = get_node("Control/FiltroInfo")
 
+onready var periodoSintVal:Label = get_node("Circuito/SliderPeriodoSintonizador/SliderPeriodoSintonizadorVal")
+onready var periodoCarrierVal:Label = get_node("TransmitionSettings/SliderPeriodoCarrier/SliderPeriodoCarrierVal")
+
 onready var periodoDeTrans = .1
 onready var periodoCarrierTrans = .5
 
 onready var amplitude = 50 #Amplitude da onda
-onready var periodo = .1 #Periodo da onda
+onready var periodo = .05 #Periodo da onda
 onready var periodoCarrier = .5
+
+onready var periodoSint = .5
 
 var espacoAmostral = 420
 
@@ -42,7 +45,6 @@ onready var poolCarrier:PoolVector2Array #Ponto0
 onready var poolSenoidal:PoolVector2Array #Ponto1
 onready var poolModulada:PoolVector2Array #ponto4
 onready var poolRetificada:PoolVector2Array #Ponto2
-#onready var poolFiltrada:PoolVector2Array #Ponto3
 onready var poolSaida:PoolVector2Array #PontoSaida
 onready var poolSintonizador:PoolVector2Array #PontoSintonizador
 
@@ -100,7 +102,19 @@ func ondaCarrier():
 	
 	draw_polyline(poolCarrier, Color(1, 0.5, 0.31, 1), 1, true)
 
+
 func ondaModulada():
+	var step = 0.1
+	poolModulada = PoolVector2Array()
+	var i = 0
+	
+	
+	while i < espacoAmostral:
+		poolModulada.append(ponto4.position+Vector2(i, 2 * sin(periodo*i)*(1+(amplitude/2*cos(periodoCarrier*i)))))
+		i += step
+	draw_polyline(poolModulada, Color( 0, 1, 1, 1 ), 1, true)
+
+func _ondaModulada():
 	var step = 0.1
 	poolModulada = PoolVector2Array()
 	
@@ -116,31 +130,52 @@ func ondaModulada():
 	
 	draw_polyline(poolModulada, Color( 0, 1, 1, 1 ), 1, true)
 
+
 func ondaRetificada():
-	poolRetificada = poolModulada
-	#poolFiltrada = PoolVector2Array()
-	
-	var idx = 0
-	
-	while idx < poolRetificada.size():
-		poolRetificada[idx] -= ponto4.position
-		if(poolRetificada[idx].y > 0):
-			poolRetificada[idx] = Vector2(poolRetificada[idx].x, 0)
-		poolRetificada[idx] += ponto2.position
-		idx +=1
+	poolRetificada = PoolVector2Array()
+	var step = 0.2
+	var i = 0	
+	while i < espacoAmostral:
+		var calculo = 2 * sin(periodo*i)*(1+(amplitude/2*cos(periodoSint*i)))
+		
+		if(calculo > 0):
+			calculo = 0
+		
+		poolRetificada.append(ponto2.position+Vector2(i, calculo))
+		i += step
 	draw_polyline(poolRetificada, Color(1, 0.5, 0.31, 1), 1, true)
-#	draw_polyline(poolFiltrada, Color(1, 0.5, 0.31, 1), 1, true)
+
+
+
 func ondaSaida():
 	var step = 1
 	poolSaida = PoolVector2Array()
-
 	
 	var i = 0
 	var doOnce:bool = true
 	while i < espacoAmostral:
-		poolSaida.append(Vector2(i, amplitude*sin(periodo*i)) + pontoSaida.position)
+		var calculo = (sin(periodo*i)*(1+(amplitude/1*cos(periodoCarrier*i))))/(1+(amplitude*(cos(periodoSint*i)/1)))
+		
+		var amplitudeDeSaida = 40
+		
+		calculo *= amplitudeDeSaida #Acrecimo à amplitude
+		
+		var maxOffset = amplitudeDeSaida + 10
+		
+		if(calculo > maxOffset):
+			calculo = maxOffset
+		if(calculo < -maxOffset):
+			calculo = -maxOffset
+		
+		poolSaida.append(pontoSaida.position + Vector2(i, calculo))
 		i += step
 	
+#	var indx = 0
+#	for p in poolSaida:
+#		if(indx < poolSaida.size()-1):
+#			poolSaida[indx].y = (poolSaida[indx].y + poolSaida[indx+1].y)/2
+#			print(indx)
+#		indx += 1
 	draw_polyline(poolSaida, Color(1, 0.5, 0.31, 1), 1, true)
 
 func ondaSintonizador():
@@ -149,7 +184,7 @@ func ondaSintonizador():
 	var i = 0	
 
 	while i < espacoAmostral:
-		poolSintonizador.append(Vector2(i,(amplitude*sin(periodoCarrier*i))) + pontoSintonizador.position)
+		poolSintonizador.append(Vector2(i,(amplitude*sin(periodoSint*i))) + pontoSintonizador.position)
 		i += step
 	
 	draw_polyline(poolSintonizador, Color(1, 0.5, 0.31, 1), 1, true)
@@ -164,9 +199,7 @@ func _draw():
 		ondaSaida()
 	if(sintonizadorInfoIsOn):
 		ondaSintonizador()
-	
-	
-	
+
 
 
 func _process(delta):
@@ -187,11 +220,8 @@ func _on_SliderPeriodoModulado_value_changed(value):
 
 
 func _on_SliderPeriodoCarrier_value_changed(value):
+	periodoCarrierVal.text = str(value)
 	periodoCarrier = value
-
-
-
-
 
 
 func hideAllInfo():
@@ -247,3 +277,8 @@ func _on_BotaoFiltro_pressed():
 		filtroInfo.visible = true
 	else:
 		hideAllInfo()
+
+
+func _on_SliderPeriodoSintonizador_value_changed(value):
+	periodoSintVal.text = str(value)
+	periodoSint = value
